@@ -59,7 +59,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 @property (strong, nonatomic, nullable) id<SDWebImageProgressiveCoder> progressiveCoder;
 
 @end
-
+// implement NSOperation
 @implementation SDWebImageDownloaderOperation
 
 @synthesize executing = _executing;
@@ -123,7 +123,9 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
     }
     return shouldCancel;
 }
-
+/**
+ * NSOperation start
+ */
 - (void)start {
     @synchronized (self) {
         if (self.isCancelled) {
@@ -135,6 +137,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 #if SD_UIKIT
         Class UIApplicationClass = NSClassFromString(@"UIApplication");
         BOOL hasApplication = UIApplicationClass && [UIApplicationClass respondsToSelector:@selector(sharedApplication)];
+        // need continue when app enter background
         if (hasApplication && [self shouldContinueWhenAppEntersBackground]) {
             __weak __typeof__ (self) wself = self;
             UIApplication * app = [UIApplicationClass performSelector:@selector(sharedApplication)];
@@ -190,7 +193,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
             }
         }
 #pragma clang diagnostic pop
-        [self.dataTask resume];
+        [self.dataTask resume]; // dataTask resume, new DataTask has a suspended state, so resume is also start
         for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
             progressBlock(0, NSURLResponseUnknownLength, self.request.URL);
         }
@@ -278,7 +281,13 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 }
 
 #pragma mark NSURLSessionDataDelegate
-
+/**
+ * Handle Network process, pre-handle
+ * @param session
+ * @param dataTask
+ * @param response
+ * @param completionHandler
+ */
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
 didReceiveResponse:(NSURLResponse *)response
@@ -289,7 +298,7 @@ didReceiveResponse:(NSURLResponse *)response
     self.expectedSize = expected;
     self.response = response;
     NSInteger statusCode = [response respondsToSelector:@selector(statusCode)] ? ((NSHTTPURLResponse *)response).statusCode : 200;
-    BOOL valid = statusCode < 400;
+    BOOL valid = statusCode < 400;  // statusCode < 400 means successful
     //'304 Not Modified' is an exceptional one. It should be treated as cancelled if no cache data
     //URLSession current behavior will return 200 status code when the server respond 304 and URLCache hit. But this is not a standard behavior and we just add a check
     if (statusCode == 304 && !self.cachedData) {
@@ -297,11 +306,13 @@ didReceiveResponse:(NSURLResponse *)response
     }
     
     if (valid) {
+        // save the block in a nsdictionary
         for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
             progressBlock(0, expected, self.request.URL);
         }
     } else {
         // Status code invalid and marked as cancelled. Do not call `[self.dataTask cancel]` which may mass up URLSession life cycle
+        // cancel
         disposition = NSURLSessionResponseCancel;
     }
     __block typeof(self) strongSelf = self;
@@ -314,10 +325,18 @@ didReceiveResponse:(NSURLResponse *)response
     }
 }
 
+/**
+ * handle the data
+ * @param session
+ * @param dataTask
+ * @param data
+ */
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
     if (!self.imageData) {
+        // get imageData
         self.imageData = [[NSMutableData alloc] initWithCapacity:self.expectedSize];
     }
+    //acculate data
     [self.imageData appendData:data];
 
     if ((self.options & SDWebImageDownloaderProgressiveDownload) && self.expectedSize > 0) {
@@ -344,14 +363,18 @@ didReceiveResponse:(NSURLResponse *)response
             @autoreleasepool {
                 UIImage *image = [self.progressiveCoder incrementallyDecodedImageWithData:imageData finished:finished];
                 if (image) {
+                    // download image , then cache this image
                     NSString *key = [[SDWebImageManager sharedManager] cacheKeyForURL:self.request.URL];
+                    // scale image
                     image = [self scaledImageForKey:key image:image];
                     if (self.shouldDecompressImages) {
+                        // decompress Image
                         image = [[SDWebImageCodersManager sharedInstance] decompressedImageWithImage:image data:&imageData options:@{SDWebImageCoderScaleDownLargeImagesKey: @(NO)}];
                     }
                     
-                    // We do not keep the progressive decoding image even when `finished`=YES. Because they are for view rendering but not take full function from downloader options. And some coders implementation may not keep consistent between progressive decoding and normal decoding.
-                    
+                    // We do not keep the progressive decoding image even when `finished`=YES.
+                    // Because they are for view rendering but not take full function from downloader options.
+                    // And some coders implementation may not keep consistent between progressive decoding and normal decoding.
                     [self callCompletionBlocksWithImage:image imageData:nil error:nil finished:NO];
                 }
             }

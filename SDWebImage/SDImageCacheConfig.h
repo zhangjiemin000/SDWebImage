@@ -25,12 +25,14 @@ typedef NS_ENUM(NSUInteger, SDImageCacheConfigExpireType) {
 /**
  * Decompressing images that are downloaded and cached can improve performance but can consume lot of memory.
  * Defaults to YES. Set this to NO if you are experiencing a crash due to excessive memory consumption.
+ * 是否压缩图片，默认为YES，如果设成NO，可能导致内存溢出
  */
 @property (assign, nonatomic) BOOL shouldDecompressImages;
 
 /**
  * Whether or not to disable iCloud backup
  * Defaults to YES.
+ *  不需要ICloud缓存
  */
 @property (assign, nonatomic) BOOL shouldDisableiCloud;
 
@@ -38,6 +40,7 @@ typedef NS_ENUM(NSUInteger, SDImageCacheConfigExpireType) {
  * Whether or not to use memory cache
  * @note When the memory cache is disabled, the weak memory cache will also be disabled.
  * Defaults to YES.
+ * 是否缓存到内存里面
  */
 @property (assign, nonatomic) BOOL shouldCacheImagesInMemory;
 
@@ -45,6 +48,7 @@ typedef NS_ENUM(NSUInteger, SDImageCacheConfigExpireType) {
  * The option to control weak memory cache for images. When enable, `SDImageCache`'s memory cache will use a weak maptable to store the image at the same time when it stored to memory, and get removed at the same time.
  * However when memory warning is triggered, since the weak maptable does not hold a strong reference to image instacnce, even when the memory cache itself is purged, some images which are held strongly by UIImageViews or other live instances can be recovered again, to avoid later re-query from disk cache or network. This may be helpful for the case, for example, when app enter background and memory is purged, cause cell flashing after re-enter foreground.
  * Defautls to YES. You can change this option dynamically.
+ *
  */
 @property (assign, nonatomic) BOOL shouldUseWeakMemoryCache;
 

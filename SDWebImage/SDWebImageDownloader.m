@@ -89,8 +89,10 @@
     if ((self = [super init])) {
         _operationClass = [SDWebImageDownloaderOperation class];
         _shouldDecompressImages = YES;
+        // FIFO , First in first out
         _executionOrder = SDWebImageDownloaderFIFOExecutionOrder;
         _downloadQueue = [NSOperationQueue new];
+        // max concurrentCount = 6
         _downloadQueue.maxConcurrentOperationCount = 6;
         _downloadQueue.name = @"com.hackemist.SDWebImageDownloader";
         _URLOperations = [NSMutableDictionary new];
@@ -235,6 +237,7 @@
     else {
         request.allHTTPHeaderFields = [self allHTTPHeaderFields];
     }
+    // create new SDWebImageDownloaderOperation, which combined a NSURLRequest
     NSOperation<SDWebImageDownloaderOperationInterface> *operation = [[self.operationClass alloc] initWithRequest:request inSession:self.session options:options];
     operation.shouldDecompressImages = self.shouldDecompressImages;
     
@@ -251,6 +254,7 @@
     }
     
     if (self.executionOrder == SDWebImageDownloaderLIFOExecutionOrder) {
+        // last in first out
         // Emulate LIFO execution order by systematically adding new operations as last operation's dependency
         [self.lastAddedOperation addDependency:operation];
         self.lastAddedOperation = operation;
@@ -291,6 +295,8 @@
     NSOperation<SDWebImageDownloaderOperationInterface> *operation = [self.URLOperations objectForKey:url];
     // There is a case that the operation may be marked as finished or cancelled, but not been removed from `self.URLOperations`.
     if (!operation || operation.isFinished || operation.isCancelled) {
+        // if operation is not at excuting
+        // create new Operation
         operation = [self createDownloaderOperationWithUrl:url options:options];
         __weak typeof(self) wself = self;
         operation.completionBlock = ^{
@@ -298,6 +304,7 @@
             if (!sself) {
                 return;
             }
+            // auto remove self
             LOCK(sself.operationsLock);
             [sself.URLOperations removeObjectForKey:url];
             UNLOCK(sself.operationsLock);
@@ -337,7 +344,11 @@
 }
 
 #pragma mark Helper methods
-
+/**
+ * get corresponding operations from task
+ * @param task
+ * @return
+ */
 - (NSOperation<SDWebImageDownloaderOperationInterface> *)operationWithTask:(NSURLSessionTask *)task {
     NSOperation<SDWebImageDownloaderOperationInterface> *returnOperation = nil;
     for (NSOperation<SDWebImageDownloaderOperationInterface> *operation in self.downloadQueue.operations) {
@@ -352,22 +363,26 @@
 }
 
 #pragma mark NSURLSessionDataDelegate
-
+// first time , call this , based on completionHandler,
+//Implementing this method is optional unless you need to cancel the transfer or convert it to a
+// download task when the response headers are first received.
+// If you don’t provide this delegate method, the session always allows the task to continue.
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
 didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler {
-
     // Identify the operation that runs this task and pass it the delegate method
+    // get corresponding NSOperations, and send the message to nsOperation
     NSOperation<SDWebImageDownloaderOperationInterface> *dataOperation = [self operationWithTask:dataTask];
     if ([dataOperation respondsToSelector:@selector(URLSession:dataTask:didReceiveResponse:completionHandler:)]) {
         [dataOperation URLSession:session dataTask:dataTask didReceiveResponse:response completionHandler:completionHandler];
     } else {
         if (completionHandler) {
-            completionHandler(NSURLSessionResponseAllow);
+            completionHandler(NSURLSessionResponseAllow); //Call this， will call didReceiveData Method
         }
     }
 }
+
 
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
 

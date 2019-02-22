@@ -1,7 +1,7 @@
 /*
  * This file is part of the SDWebImage package.
  * (c) Olivier Poitrey <rs@dailymotion.com>
- *
+ * 这是单例，用于控制图片下载的缓存和网络之间的情况
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
@@ -10,6 +10,7 @@
 #import "NSImage+WebCache.h"
 #import <objc/message.h>
 
+//定义宏的GCD互斥
 #define LOCK(lock) dispatch_semaphore_wait(lock, DISPATCH_TIME_FOREVER);
 #define UNLOCK(lock) dispatch_semaphore_signal(lock);
 
@@ -23,11 +24,22 @@
 @end
 
 @interface SDWebImageManager ()
-
+/**
+ * 缓存，内部定义了SDMemoryCache，另外，SDMemoryCache又包含了一个NSMapTap的二级缓存
+ */
 @property (strong, nonatomic, readwrite, nonnull) SDImageCache *imageCache;
+/**
+ *  看样子是图片下载器
+ */
 @property (strong, nonatomic, readwrite, nonnull) SDWebImageDownloader *imageDownloader;
+/**
+ * cached failed urls use NSMutableSet<NSURL* >
+ */
 @property (strong, nonatomic, nonnull) NSMutableSet<NSURL *> *failedURLs;
 @property (strong, nonatomic, nonnull) dispatch_semaphore_t failedURLsLock; // a lock to keep the access to `failedURLs` thread-safe
+/**
+ * 一系列的操作对象，其中包含了NSOperation、Manager的弱指针，DownloadToken以及是否已经取消的Flag
+ */
 @property (strong, nonatomic, nonnull) NSMutableSet<SDWebImageCombinedOperation *> *runningOperations;
 @property (strong, nonatomic, nonnull) dispatch_semaphore_t runningOperationsLock; // a lock to keep the access to `runningOperations` thread-safe
 
@@ -66,7 +78,7 @@
     if (!url) {
         return @"";
     }
-
+    //if user defined a cacheKey filter block, use this block to handle URL
     if (self.cacheKeyFilter) {
         return self.cacheKeyFilter(url);
     } else {
@@ -75,16 +87,21 @@
 }
 
 - (nullable UIImage *)scaledImageForKey:(nullable NSString *)key image:(nullable UIImage *)image {
+    //use inline to speed up performance
     return SDScaledImageForKey(key, image);
 }
-
+/**
+ * check if there is a cached image, from memory or disk
+ * @param url
+ * @param completionBlock
+ */
 - (void)cachedImageExistsForURL:(nullable NSURL *)url
                      completion:(nullable SDWebImageCheckCacheCompletionBlock)completionBlock {
-    NSString *key = [self cacheKeyForURL:url];
+    NSString *key = [self cacheKeyForURL:url];  // get full url key
     
     BOOL isInMemoryCache = ([self.imageCache imageFromMemoryCacheForKey:key] != nil);
-    
-    if (isInMemoryCache) {
+
+    if (isInMemoryCache) {  // if have cached memory,
         // making sure we call the completion block on the main queue
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completionBlock) {
@@ -93,7 +110,7 @@
         });
         return;
     }
-    
+    // if there is no memory cache
     [self.imageCache diskImageExistsWithKey:key completion:^(BOOL isInDiskCache) {
         // the completion block of checkDiskCacheForImageWithKey:completion: is always called on the main queue, no need to further dispatch
         if (completionBlock) {
@@ -113,7 +130,14 @@
         }
     }];
 }
-
+/**
+ * 通过URL 加载图片
+ * @param url
+ * @param options
+ * @param progressBlock
+ * @param completedBlock
+ * @return
+ */
 - (id <SDWebImageOperation>)loadImageWithURL:(nullable NSURL *)url
                                      options:(SDWebImageOptions)options
                                     progress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
@@ -131,9 +155,9 @@
     if (![url isKindOfClass:NSURL.class]) {
         url = nil;
     }
-
+    // create a new operation, mostly from main-thread
     SDWebImageCombinedOperation *operation = [SDWebImageCombinedOperation new];
-    operation.manager = self;
+    operation.manager = self;  //weak-ref
 
     BOOL isFailedUrl = NO;
     if (url) {
@@ -142,23 +166,32 @@
         UNLOCK(self.failedURLsLock);
     }
 
+    // if url already failed and options not set to RetryFailed Option
     if (url.absoluteString.length == 0 || (!(options & SDWebImageRetryFailed) && isFailedUrl)) {
+        // direct return
         [self callCompletionBlockForOperation:operation completion:completedBlock error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorFileDoesNotExist userInfo:nil] url:url];
         return operation;
     }
 
     LOCK(self.runningOperationsLock);
+    // add operation to List
     [self.runningOperations addObject:operation];
     UNLOCK(self.runningOperationsLock);
+    // get url
     NSString *key = [self cacheKeyForURL:url];
     
     SDImageCacheOptions cacheOptions = 0;
+    //get some need options, and set the cacheOptions
     if (options & SDWebImageQueryDataWhenInMemory) cacheOptions |= SDImageCacheQueryDataWhenInMemory;
     if (options & SDWebImageQueryDiskSync) cacheOptions |= SDImageCacheQueryDiskSync;
     if (options & SDWebImageScaleDownLargeImages) cacheOptions |= SDImageCacheScaleDownLargeImages;
-    
+
+
     __weak SDWebImageCombinedOperation *weakOperation = operation;
+    // define the cache Operation, Operation is a task that may run in a thread
+    // then at last return this operation, and not excute immediatly
     operation.cacheOperation = [self.imageCache queryCacheOperationForKey:key options:cacheOptions done:^(UIImage *cachedImage, NSData *cachedData, SDImageCacheType cacheType) {
+        // when create a cache Operation, combine this block as done block
         __strong __typeof(weakOperation) strongOperation = weakOperation;
         if (!strongOperation || strongOperation.isCancelled) {
             [self safelyRemoveOperationFromRunning:strongOperation];
@@ -173,9 +206,10 @@
             if (cachedImage && options & SDWebImageRefreshCached) {
                 // If image was found in the cache but SDWebImageRefreshCached is provided, notify about the cached image
                 // AND try to re-download it in order to let a chance to NSURLCache to refresh it from server.
+                // directly return complete block,
                 [self callCompletionBlockForOperation:strongOperation completion:completedBlock image:cachedImage data:cachedData error:nil cacheType:cacheType finished:YES url:url];
             }
-
+            // besides , continue excute the code below
             // download if no image or requested to refresh anyway, and download allowed by delegate
             SDWebImageDownloaderOptions downloaderOptions = 0;
             if (options & SDWebImageLowPriority) downloaderOptions |= SDWebImageDownloaderLowPriority;
@@ -194,8 +228,13 @@
                 downloaderOptions |= SDWebImageDownloaderIgnoreCachedResponse;
             }
             
-            // `SDWebImageCombinedOperation` -> `SDWebImageDownloadToken` -> `downloadOperationCancelToken`, which is a `SDCallbacksDictionary` and retain the completed block below, so we need weak-strong again to avoid retain cycle
+            // `SDWebImageCombinedOperation` ->
+            // `SDWebImageDownloadToken` ->
+            // `downloadOperationCancelToken`,
+            // which is a `SDCallbacksDictionary`
+            // and retain the completed block below, so we need weak-strong again to avoid retain cycle
             __weak typeof(strongOperation) weakSubOperation = strongOperation;
+            // excute download task
             strongOperation.downloadToken = [self.imageDownloader downloadImageWithURL:url options:downloaderOptions progress:progressBlock completed:^(UIImage *downloadedImage, NSData *downloadedData, NSError *error, BOOL finished) {
                 __strong typeof(weakSubOperation) strongSubOperation = weakSubOperation;
                 if (!strongSubOperation || strongSubOperation.isCancelled) {
@@ -203,12 +242,14 @@
                     // See #699 for more details
                     // if we would call the completedBlock, there could be a race condition between this block and another completedBlock for the same object, so if this one is called second, we will overwrite the new data
                 } else if (error) {
+                    // if error, call failed
                     [self callCompletionBlockForOperation:strongSubOperation completion:completedBlock error:error url:url];
                     BOOL shouldBlockFailedURL;
                     // Check whether we should block failed url
                     if ([self.delegate respondsToSelector:@selector(imageManager:shouldBlockFailedURL:withError:)]) {
                         shouldBlockFailedURL = [self.delegate imageManager:self shouldBlockFailedURL:url withError:error];
                     } else {
+                        // default , based on error.code
                         shouldBlockFailedURL = (   error.code != NSURLErrorNotConnectedToInternet
                                                 && error.code != NSURLErrorCancelled
                                                 && error.code != NSURLErrorTimedOut
@@ -226,8 +267,10 @@
                     }
                 }
                 else {
+                    // success
                     if ((options & SDWebImageRetryFailed)) {
                         LOCK(self.failedURLsLock);
+                        // remove retry failed
                         [self.failedURLs removeObject:url];
                         UNLOCK(self.failedURLsLock);
                     }
@@ -244,6 +287,7 @@
                     } else if (downloadedImage && (!downloadedImage.images || (options & SDWebImageTransformAnimatedImage)) && [self.delegate respondsToSelector:@selector(imageManager:transformDownloadedImage:withURL:)]) {
                         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
                             @autoreleasepool {
+                                // transform Download image
                                 UIImage *transformedImage = [self.delegate imageManager:self transformDownloadedImage:downloadedImage withURL:url];
                                 
                                 if (transformedImage && finished) {
@@ -262,6 +306,7 @@
                             }
                         });
                     } else {
+                        // no transform handle
                         if (downloadedImage && finished) {
                             if (self.cacheSerializer) {
                                 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
@@ -306,6 +351,7 @@
     LOCK(self.runningOperationsLock);
     NSSet<SDWebImageCombinedOperation *> *copiedOperations = [self.runningOperations copy];
     UNLOCK(self.runningOperationsLock);
+    // every operation call @selector(cancel)
     [copiedOperations makeObjectsPerformSelector:@selector(cancel)]; // This will call `safelyRemoveOperationFromRunning:` and remove from the array
 }
 
@@ -341,6 +387,8 @@
                               cacheType:(SDImageCacheType)cacheType
                                finished:(BOOL)finished
                                     url:(nullable NSURL *)url {
+    //dispatch_main_async_safe 是一个宏定义， 定义了如果当前使用的队列就是传入的队列，则直接同步调用，否则异步抛出,
+    //判断的主线程
     dispatch_main_async_safe(^{
         if (operation && !operation.isCancelled && completionBlock) {
             completionBlock(image, data, error, cacheType, finished, url);

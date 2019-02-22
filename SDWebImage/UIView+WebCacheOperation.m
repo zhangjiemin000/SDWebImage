@@ -8,7 +8,9 @@
 
 #import "UIView+WebCacheOperation.h"
 #import "objc/runtime.h"
-
+/**
+ * 通过这种方式存储 分类某个对象
+ */
 static char loadOperationKey;
 
 // key is copy, value is weak because operation instance is retained by SDWebImageManager's runningOperations property
@@ -19,6 +21,7 @@ typedef NSMapTable<NSString *, id<SDWebImageOperation>> SDOperationsDictionary;
 
 - (SDOperationsDictionary *)sd_operationDictionary {
     @synchronized(self) {
+
         SDOperationsDictionary *operations = objc_getAssociatedObject(self, &loadOperationKey);
         if (operations) {
             return operations;

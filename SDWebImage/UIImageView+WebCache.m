@@ -36,7 +36,14 @@
 - (void)sd_setImageWithURL:(nullable NSURL *)url placeholderImage:(nullable UIImage *)placeholder options:(SDWebImageOptions)options completed:(nullable SDExternalCompletionBlock)completedBlock {
     [self sd_setImageWithURL:url placeholderImage:placeholder options:options progress:nil completed:completedBlock];
 }
-
+/**
+ *
+ * @param url
+ * @param placeholder
+ * @param options
+ * @param progressBlock
+ * @param completedBlock
+ */
 - (void)sd_setImageWithURL:(nullable NSURL *)url
           placeholderImage:(nullable UIImage *)placeholder
                    options:(SDWebImageOptions)options
@@ -72,6 +79,7 @@
     
     [arrayOfURLs enumerateObjectsUsingBlock:^(NSURL *logoImageURL, NSUInteger idx, BOOL * _Nonnull stop) {
         __weak __typeof(self) wself = self;
+        // define operation, which combined with cahche、download logic, but is not SDWebImageDownloaderOperation
         id <SDWebImageOperation> operation = [[SDWebImageManager sharedManager] loadImageWithURL:logoImageURL options:0 progress:nil completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
             __strong typeof(wself) sself = wself;
             if (!sself) return;

@@ -25,6 +25,7 @@ inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullabl
 #if SD_MAC
     return image;
 #elif SD_UIKIT || SD_WATCH
+    // UIImage 中包含多个images, 这里有递归调用，所以用了内联函数
     if ((image.images).count > 0) {
         NSMutableArray<UIImage *> *scaledImages = [NSMutableArray array];
 
@@ -42,11 +43,14 @@ inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullabl
 #if SD_WATCH
         if ([[WKInterfaceDevice currentDevice] respondsToSelector:@selector(screenScale)]) {
 #elif SD_UIKIT
+            // if image has no child images
         if ([[UIScreen mainScreen] respondsToSelector:@selector(scale)]) {
 #endif
             CGFloat scale = 1;
+            // if not local image, should scale the image size by  x factor
             if (key.length >= 8) {
                 NSRange range = [key rangeOfString:@"@2x."];
+                // find is 2x. or 3x
                 if (range.location != NSNotFound) {
                     scale = 2.0;
                 }
@@ -58,6 +62,7 @@ inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullabl
             }
             
             if (scale != image.scale) {
+                // CGImage is a pixel data format
                 UIImage *scaledImage = [[UIImage alloc] initWithCGImage:image.CGImage scale:scale orientation:image.imageOrientation];
                 scaledImage.sd_imageFormat = image.sd_imageFormat;
                 image = scaledImage;

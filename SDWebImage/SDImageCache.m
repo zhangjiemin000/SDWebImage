@@ -545,14 +545,16 @@
     // First check the in-memory cache...
     // get image from imageCache
     UIImage *image = [self imageFromMemoryCacheForKey:key];
+    //如果image不为空，且仅仅查询内存中的数据
     BOOL shouldQueryMemoryOnly = (image && !(options & SDImageCacheQueryDataWhenInMemory));
     if (shouldQueryMemoryOnly) {
+        //仅仅查询QueryMemory，如果image已经存在，就可以直接返回了
         if (doneBlock) {
             doneBlock(image, nil, SDImageCacheTypeMemory);
         }
         return nil;
     }
-    
+    //创建新的Operation
     NSOperation *operation = [NSOperation new];
     // define a block
     void(^queryDiskBlock)(void) =  ^{

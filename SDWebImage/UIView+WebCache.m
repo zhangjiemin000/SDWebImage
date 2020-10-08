@@ -62,6 +62,7 @@ static char TAG_ACTIVITY_SHOW;
                            context:(nullable NSDictionary<NSString *, id> *)context {
     SDInternalSetImageBlock internalSetImageBlock;
     if (setImageBlock) {
+        //如果存在setImageBlock，则会解析出imageData后，回调这个block
         internalSetImageBlock = ^(UIImage * _Nullable image, NSData * _Nullable imageData, SDImageCacheType cacheType, NSURL * _Nullable imageURL) {
             if (setImageBlock) {
                 setImageBlock(image, imageData);
@@ -80,20 +81,23 @@ static char TAG_ACTIVITY_SHOW;
                          completed:(nullable SDExternalCompletionBlock)completedBlock
                            context:(nullable NSDictionary<NSString *, id> *)context {
     NSString *validOperationKey = operationKey ?: NSStringFromClass([self class]);
+
     [self sd_cancelImageLoadOperationWithKey:validOperationKey];
     //还可以这个样用
     objc_setAssociatedObject(self, &imageURLKey, url, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     
     dispatch_group_t group = context[SDWebImageInternalSetImageGroupKey];
+    //如果没有配置delayPlaceHolder
     if (!(options & SDWebImageDelayPlaceholder)) {
         if (group) {
             dispatch_group_enter(group);
         }
+        //马上设置placeHolder图片
         dispatch_main_async_safe(^{
             [self sd_setImage:placeholder imageData:nil basedOnClassOrViaCustomSetImageBlock:setImageBlock cacheType:SDImageCacheTypeNone imageURL:url];
         });
     }
-    
+    //如果URL存在，继续执行正常的流程
     if (url) {
 #if SD_UIKIT
         // check if activityView is enabled or not
@@ -121,6 +125,7 @@ static char TAG_ACTIVITY_SHOW;
         };
         // load image from memoryCache or from Internet
         id <SDWebImageOperation> operation = [manager loadImageWithURL:url options:options progress:combinedProgressBlock completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
+            //从网络上下载到图片
             __strong __typeof (wself) sself = wself;
             if (!sself) { return; }
 #if SD_UIKIT
@@ -131,6 +136,7 @@ static char TAG_ACTIVITY_SHOW;
                 sself.sd_imageProgress.totalUnitCount = SDWebImageProgressUnitCountUnknown;
                 sself.sd_imageProgress.completedUnitCount = SDWebImageProgressUnitCountUnknown;
             }
+            //如果设置里面配置了避免自动设置图片，或者图片已经完成下载，来决定是否调用完成Block
             BOOL shouldCallCompletedBlock = finished || (options & SDWebImageAvoidAutoSetImage);
             BOOL shouldNotSetImage = ((image && (options & SDWebImageAvoidAutoSetImage)) ||
                                       (!image && !(options & SDWebImageDelayPlaceholder)));

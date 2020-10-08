@@ -161,6 +161,7 @@
 
     BOOL isFailedUrl = NO;
     if (url) {
+        //如果是已经失败的地址
         LOCK(self.failedURLsLock);
         isFailedUrl = [self.failedURLs containsObject:url];
         UNLOCK(self.failedURLsLock);
@@ -169,6 +170,7 @@
     // if url already failed and options not set to RetryFailed Option
     if (url.absoluteString.length == 0 || (!(options & SDWebImageRetryFailed) && isFailedUrl)) {
         // direct return
+        //如果不对失败进行重试，或者URL为空，直接返回错误了
         [self callCompletionBlockForOperation:operation completion:completedBlock error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorFileDoesNotExist userInfo:nil] url:url];
         return operation;
     }
@@ -190,6 +192,7 @@
     __weak SDWebImageCombinedOperation *weakOperation = operation;
     // define the cache Operation, Operation is a task that may run in a thread
     // then at last return this operation, and not excute immediatly
+    //获取NSOperation实例
     operation.cacheOperation = [self.imageCache queryCacheOperationForKey:key options:cacheOptions done:^(UIImage *cachedImage, NSData *cachedData, SDImageCacheType cacheType) {
         // when create a cache Operation, combine this block as done block
         __strong __typeof(weakOperation) strongOperation = weakOperation;

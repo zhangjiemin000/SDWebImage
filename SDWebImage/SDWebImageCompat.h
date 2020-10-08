@@ -101,7 +101,9 @@ FOUNDATION_EXPORT NSString *const SDWebImageErrorDomain;
         dispatch_async(queue, block);\
     }
 #endif
-
+/**
+ * 保证async到指定的queue中，如果当前不在这个queue，那就抛出到对应的queue，如果当前是这个key，就直接执行
+ */
 #ifndef dispatch_main_async_safe
 #define dispatch_main_async_safe(block) dispatch_queue_async_safe(dispatch_get_main_queue(), block)
 #endif

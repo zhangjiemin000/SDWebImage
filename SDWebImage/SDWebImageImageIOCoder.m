@@ -34,7 +34,7 @@ static const CGFloat kDestImageSizeMB = 60.0f;
 static const CGFloat kSourceImageTileSizeMB = 20.0f;
 
 static const CGFloat kBytesPerMB = 1024.0f * 1024.0f;
-static const CGFloat kPixelsPerMB = kBytesPerMB / kBytesPerPixel;
+static const CGFloat kPixelsPerMB = kBytesPerMB / kBytesPerPixel;   //拿到每一兆的像素有多少个像素点
 static const CGFloat kDestTotalPixels = kDestImageSizeMB * kPixelsPerMB;
 static const CGFloat kTileTotalPixels = kSourceImageTileSizeMB * kPixelsPerMB;
 
@@ -67,6 +67,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
 
 #pragma mark - Decode
 - (BOOL)canDecodeFromData:(nullable NSData *)data {
+    //普通类型的，使用系统就可以解码出来，但一些其他的格式，例如Gif、WebP，HEIC和HEIF格式，系统就没法弄
     switch ([NSData sd_imageFormatForImageData:data]) {
         case SDImageFormatWebP:
             // Do not support WebP decoding
@@ -102,10 +103,10 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     if (!data) {
         return nil;
     }
-    
+    //直接使用系统的UIImage来初始化图片
     UIImage *image = [[UIImage alloc] initWithData:data];
+    //根据第一个字节判断当前的图片是什么格式的
     image.sd_imageFormat = [NSData sd_imageFormatForImageData:data];
-    
     return image;
 }
 
@@ -252,8 +253,9 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     if (![[self class] shouldDecodeImage:image]) {
         return image;
     }
-    
+    //判断是否应该缩放图片(图片大于最大的设定要求，也就是60MB)
     if (![[self class] shouldScaleDownImage:image]) {
+        //如果不需要缩放，则直接解压缩图片,调用CGGraphic又重新绘制了一遍
         return [self sd_decompressedImageWithImage:image];
     }
     
@@ -271,6 +273,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
         // Determine the scale ratio to apply to the input image
         // that results in an output image of the defined size.
         // see kDestImageSizeMB, and how it relates to destTotalPixels.
+        //这里对图片进行压缩，计算出image的Scale
         CGFloat imageScale = sqrt(kDestTotalPixels / sourceTotalPixels);
         CGSize destResolution = CGSizeZero;
         destResolution.width = (int)(sourceResolution.width * imageScale);
@@ -308,16 +311,18 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
         // band. Therefore we fully utilize all of the pixel data that results
         // from a decoding opertion by achnoring our tile size to the full
         // width of the input image.
+        //下面的操作就是把一个大幅的图片绘制出来
         CGRect sourceTile = CGRectZero;
         sourceTile.size.width = sourceResolution.width;
         // The source tile height is dynamic. Since we specified the size
         // of the source tile in MB, see how many rows of pixels high it
         // can be given the input image width.
+        //所能绘制的单次最大高度
         sourceTile.size.height = (int)(kTileTotalPixels / sourceTile.size.width );
         sourceTile.origin.x = 0.0f;
         // The output tile is the same proportions as the input tile, but
         // scaled to image scale.
-        CGRect destTile;
+        CGRect destTile; //目标Rect区域
         destTile.size.width = destResolution.width;
         destTile.size.height = sourceTile.size.height * imageScale;
         destTile.origin.x = 0.0f;
@@ -353,12 +358,14 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
                 CGImageRelease( sourceTileImageRef );
             }
         }
-        
+        //从Context中获取Image
         CGImageRef destImageRef = CGBitmapContextCreateImage(destContext);
         CGContextRelease(destContext);
+        //如果没有绘制出来，则返回image
         if (destImageRef == NULL) {
             return image;
         }
+        //如果绘制出来了，则生成新的destImage图片，如果生成成功，即返回
         UIImage *destImage = [[UIImage alloc] initWithCGImage:destImageRef scale:image.scale orientation:image.imageOrientation];
         CGImageRelease(destImageRef);
         if (destImage == nil) {
@@ -450,6 +457,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         CFStringRef imageUTType = [NSData sd_UTTypeFromSDImageFormat:SDImageFormatHEIC];
+        //获取系统支持的ImageSource编码解码列表
         NSArray *imageUTTypes = (__bridge_transfer NSArray *)CGImageSourceCopyTypeIdentifiers();
         if ([imageUTTypes containsObject:(__bridge NSString *)(imageUTType)]) {
             canDecode = YES;
@@ -514,6 +522,11 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
 }
 
 #if SD_UIKIT || SD_WATCH
+/**
+ * 是否需要压缩图片的大小，图片目前最大就支持60MB
+ * @param image
+ * @return
+ */
 + (BOOL)shouldScaleDownImage:(nonnull UIImage *)image {
     BOOL shouldScaleDown = YES;
     

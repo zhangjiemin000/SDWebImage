@@ -463,6 +463,11 @@
     return image;
 }
 
+/**
+ * 从所有的磁盘路径中，查找对应的Cache文件，如果有就返回，如果没有就不需要
+ * @param key
+ * @return
+ */
 - (nullable NSData *)diskImageDataBySearchingAllPathsForKey:(nullable NSString *)key {
     NSString *defaultPath = [self defaultCachePathForKey:key];
     NSData *data = [NSData dataWithContentsOfFile:defaultPath options:self.config.diskCacheReadingOptions error:nil];
@@ -505,10 +510,18 @@
     return [self diskImageForKey:key data:data options:0];
 }
 
+/**
+ * 解码并且压缩对应的图片
+ * @param key
+ * @param data
+ * @param options
+ * @return
+ */
 - (nullable UIImage *)diskImageForKey:(nullable NSString *)key data:(nullable NSData *)data options:(SDImageCacheOptions)options {
     if (data) {
         UIImage *image = [[SDWebImageCodersManager sharedInstance] decodedImageWithData:data];
         image = [self scaledImageForKey:key image:image];
+        //如果需要解压
         if (self.config.shouldDecompressImages) {
             BOOL shouldScaleDown = options & SDImageCacheScaleDownLargeImages;
             image = [[SDWebImageCodersManager sharedInstance] decompressedImageWithImage:image data:&data options:@{SDWebImageCoderScaleDownLargeImagesKey: @(shouldScaleDown)}];
@@ -569,10 +582,12 @@
             UIImage *diskImage;
             SDImageCacheType cacheType = SDImageCacheTypeNone;
             if (image) {
+                //如果内存中有对应的Image
                 // the image is from in-memory cache
                 diskImage = image;
                 cacheType = SDImageCacheTypeMemory;
             } else if (diskData) {
+                //否则从磁盘的缓存中读取
                 cacheType = SDImageCacheTypeDisk;
                 // decode image data only if in-memory cache missed
                 diskImage = [self diskImageForKey:key data:diskData options:options];
@@ -598,10 +613,11 @@
     };
     
     if (options & SDImageCacheQueryDiskSync) {
+        //如果需要同步的调用block，则直接执行
         // excute this block
         queryDiskBlock();
     } else {
-
+        //否则的话，异步执行这个Block。
         dispatch_async(self.ioQueue, queryDiskBlock);
     }
     

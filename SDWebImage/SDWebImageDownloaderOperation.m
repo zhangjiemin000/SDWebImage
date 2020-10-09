@@ -368,6 +368,7 @@ didReceiveResponse:(NSURLResponse *)response
         // progressive decode the image in coder queue
         dispatch_async(self.coderQueue, ^{
             @autoreleasepool {
+                //增量来编码图片
                 UIImage *image = [self.progressiveCoder incrementallyDecodedImageWithData:imageData finished:finished];
                 if (image) {
                     // download image , then cache this image

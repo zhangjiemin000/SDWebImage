@@ -23,7 +23,7 @@ static const size_t kBitsPerComponent = 8;
  * Suggested value for iPad2 and iPhone 4: 120.
  * Suggested value for iPhone 3G and iPod 2 and earlier devices: 30.
  */
-static const CGFloat kDestImageSizeMB = 60.0f;
+static const CGFloat kDestImageSizeMB = 3.0f; // 60.0f;
 
 /*
  * Defines the maximum size in MB of a tile used to decode image when the flag `SDWebImageScaleDownLargeImages` is set
@@ -110,8 +110,15 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     return image;
 }
 
+/**
+ * 增量解析图像数据
+ * @param data
+ * @param finished
+ * @return
+ */
 - (UIImage *)incrementallyDecodedImageWithData:(NSData *)data finished:(BOOL)finished {
     if (!_imageSource) {
+        //先创建一个增量Source对象
         _imageSource = CGImageSourceCreateIncremental(NULL);
     }
     UIImage *image;
@@ -120,18 +127,23 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     // Thanks to the author @Nyx0uf
     
     // Update the data source, we must pass ALL the data, not just the new bytes
+    //更新数据，必须是所有的收到的数据，而不是新的数据
     CGImageSourceUpdateData(_imageSource, (__bridge CFDataRef)data, finished);
     
     if (_width + _height == 0) {
+        //如果第一次
+        //要拿对应的宽度和高度，这个是根据数据内部来解析的
         CFDictionaryRef properties = CGImageSourceCopyPropertiesAtIndex(_imageSource, 0, NULL);
         if (properties) {
             NSInteger orientationValue = 1;
+
             CFTypeRef val = CFDictionaryGetValue(properties, kCGImagePropertyPixelHeight);
             if (val) CFNumberGetValue(val, kCFNumberLongType, &_height);
             val = CFDictionaryGetValue(properties, kCGImagePropertyPixelWidth);
             if (val) CFNumberGetValue(val, kCFNumberLongType, &_width);
             val = CFDictionaryGetValue(properties, kCGImagePropertyOrientation);
             if (val) CFNumberGetValue(val, kCFNumberNSIntegerType, &orientationValue);
+            //所有带有Ref的对象，都是需要自己释放的
             CFRelease(properties);
             
             // When we draw to Core Graphics, we lose orientation information,
@@ -139,13 +151,15 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
             // oriented incorrectly sometimes. (Unlike the image born of initWithData
             // in didCompleteWithError.) So save it here and pass it on later.
 #if SD_UIKIT || SD_WATCH
+            //保留当前旋转的方向,通过EXIF中的信息，来获取旋转的方向
             _orientation = [SDWebImageCoderHelper imageOrientationFromEXIFOrientation:orientationValue];
 #endif
         }
     }
-    
+    //如果已经拿到宽度或者高度信息
     if (_width + _height > 0) {
         // Create the image
+        //创建这个图片
         CGImageRef partialImageRef = CGImageSourceCreateImageAtIndex(_imageSource, 0, NULL);
         
         if (partialImageRef) {
@@ -168,24 +182,22 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     
     return image;
 }
+- (nullable UIImage *)decompressedImageWithImage:(UIImage *)image data:(NSData **)data options:(NSDictionary<NSString *, NSObject *> *)optionsDict {
 
-- (UIImage *)decompressedImageWithImage:(UIImage *)image
-                                   data:(NSData *__autoreleasing  _Nullable *)data
-                                options:(nullable NSDictionary<NSString*, NSObject*>*)optionsDict {
 #if SD_MAC
     return image;
 #endif
 #if SD_UIKIT || SD_WATCH
-    BOOL shouldScaleDown = NO;
-    if (optionsDict != nil) {
-        NSNumber *scaleDownLargeImagesOption = nil;
-        if ([optionsDict[SDWebImageCoderScaleDownLargeImagesKey] isKindOfClass:[NSNumber class]]) {
-            scaleDownLargeImagesOption = (NSNumber *)optionsDict[SDWebImageCoderScaleDownLargeImagesKey];
-        }
-        if (scaleDownLargeImagesOption != nil) {
-            shouldScaleDown = [scaleDownLargeImagesOption boolValue];
-        }
-    }
+    BOOL shouldScaleDown = YES;
+//    if (optionsDict != nil) {
+//        NSNumber *scaleDownLargeImagesOption = nil;
+//        if ([optionsDict[SDWebImageCoderScaleDownLargeImagesKey] isKindOfClass:[NSNumber class]]) {
+//            scaleDownLargeImagesOption = (NSNumber *)optionsDict[SDWebImageCoderScaleDownLargeImagesKey];
+//        }
+//        if (scaleDownLargeImagesOption != nil) {
+//            shouldScaleDown = [scaleDownLargeImagesOption boolValue];
+//        }
+//    }
     if (!shouldScaleDown) {
         return [self sd_decompressedImageWithImage:image];
     } else {
@@ -312,6 +324,11 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
         // from a decoding opertion by achnoring our tile size to the full
         // width of the input image.
         //下面的操作就是把一个大幅的图片绘制出来
+        //具体的操作步骤就是计算出最终需要缩放的宽高，然后再根据一定的比例，按照目标宽度，然后缩小高度，一点一点的绘制
+        //比如源图片为 7982 * 4980 ， 目标图像根据最大的内存像素，计算得到1086*668， 然后再通过1086*100 这种小间隔来向一个Context中进行绘制
+        //这里有一个Overlap的概念，Overlap应该就是指两次绘制之间重叠部分的的像素高度，因为绘制的高度间隔不会完全是一个整数，这样就会导致绘制出来
+        //有缝隙，所以需要一定的重叠绘制。 现在唯一不明白的地方就是为什么需要这么干，按照原定的60MB最大内存空间，这个也觉得很大吗？ 另外，使用CGDrawImage
+        //到Context中，难道就不占内存吗？看代码，貌似是直接拿一副大图，缩放到目标大小，会导致应用崩溃，所以只能将大图切成一小块一小块的进行缩放
         CGRect sourceTile = CGRectZero;
         sourceTile.size.width = sourceResolution.width;
         // The source tile height is dynamic. Since we specified the size
@@ -347,6 +364,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
             @autoreleasepool {
                 sourceTile.origin.y = y * sourceTileHeightMinusOverlap + sourceSeemOverlap;
                 destTile.origin.y = destResolution.height - (( y + 1 ) * sourceTileHeightMinusOverlap * imageScale + kDestSeemOverlap);
+                //这里只是截图了部分图片数据，并没有产生新的数据，sourceTileImageRef还是引用了原来的数据(sourceImageRef的数据，也就是原始图片的数据)
                 sourceTileImageRef = CGImageCreateWithImageInRect( sourceImageRef, sourceTile );
                 if( y == iterations - 1 && remainder ) {
                     float dify = destTile.size.height;
@@ -354,6 +372,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
                     dify -= destTile.size.height;
                     destTile.origin.y += dify;
                 }
+                //这里实现了缩放，并且复制了图片的数据,所以这里就解释了为什么之前destTile的高度还要乘以一个scale，因为这是片段的片段啊。。。
                 CGContextDrawImage( destContext, destTile, sourceTileImageRef );
                 CGImageRelease( sourceTileImageRef );
             }

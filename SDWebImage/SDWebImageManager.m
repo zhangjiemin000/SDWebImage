@@ -192,7 +192,7 @@
     __weak SDWebImageCombinedOperation *weakOperation = operation;
     // define the cache Operation, Operation is a task that may run in a thread
     // then at last return this operation, and not excute immediatly
-    //获取NSOperation实例
+    //获取缓存中的实例
     operation.cacheOperation = [self.imageCache queryCacheOperationForKey:key options:cacheOptions done:^(UIImage *cachedImage, NSData *cachedData, SDImageCacheType cacheType) {
         // when create a cache Operation, combine this block as done block
         __strong __typeof(weakOperation) strongOperation = weakOperation;
@@ -206,6 +206,7 @@
             && (!cachedImage || options & SDWebImageRefreshCached)
             && (![self.delegate respondsToSelector:@selector(imageManager:shouldDownloadImageForURL:)] || [self.delegate imageManager:self shouldDownloadImageForURL:url]);
         if (shouldDownload) {
+            //如果缓存中没有获取到图片，那么就会去直接下载
             if (cachedImage && options & SDWebImageRefreshCached) {
                 // If image was found in the cache but SDWebImageRefreshCached is provided, notify about the cached image
                 // AND try to re-download it in order to let a chance to NSURLCache to refresh it from server.
@@ -239,6 +240,7 @@
             __weak typeof(strongOperation) weakSubOperation = strongOperation;
             // excute download task
             strongOperation.downloadToken = [self.imageDownloader downloadImageWithURL:url options:downloaderOptions progress:progressBlock completed:^(UIImage *downloadedImage, NSData *downloadedData, NSError *error, BOOL finished) {
+                //这会开始下载图片
                 __strong typeof(weakSubOperation) strongSubOperation = weakSubOperation;
                 if (!strongSubOperation || strongSubOperation.isCancelled) {
                     // Do nothing if the operation was cancelled
@@ -282,6 +284,7 @@
                     
                     // We've done the scale process in SDWebImageDownloader with the shared manager, this is used for custom manager and avoid extra scale.
                     if (self != [SDWebImageManager sharedManager] && self.cacheKeyFilter && downloadedImage) {
+                        //为了保护一下图片的scale不被其他地方影响
                         downloadedImage = [self scaledImageForKey:key image:downloadedImage];
                     }
 

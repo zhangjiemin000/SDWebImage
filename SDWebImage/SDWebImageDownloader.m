@@ -225,6 +225,7 @@
 
     // In order to prevent from potential duplicate caching (NSURLCache + SDImageCache) we disable the cache for image requests if told otherwise
     NSURLRequestCachePolicy cachePolicy = options & SDWebImageDownloaderUseNSURLCache ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringLocalCacheData;
+    //创建Request
     NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url
                                                                 cachePolicy:cachePolicy
                                                             timeoutInterval:timeoutInterval];
@@ -256,7 +257,9 @@
     if (self.executionOrder == SDWebImageDownloaderLIFOExecutionOrder) {
         // last in first out
         // Emulate LIFO execution order by systematically adding new operations as last operation's dependency
+        //上一个进场的Operation，依赖于这次进场的Operation
         [self.lastAddedOperation addDependency:operation];
+        //将上一个进场的Operation赋值为当次的Operation
         self.lastAddedOperation = operation;
     }
 
@@ -297,6 +300,7 @@
     if (!operation || operation.isFinished || operation.isCancelled) {
         // if operation is not at excuting
         // create new Operation
+        //创建一个新的Download 操作
         operation = [self createDownloaderOperationWithUrl:url options:options];
         __weak typeof(self) wself = self;
         operation.completionBlock = ^{

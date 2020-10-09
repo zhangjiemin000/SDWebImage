@@ -124,6 +124,7 @@ static char TAG_ACTIVITY_SHOW;
             }
         };
         // load image from memoryCache or from Internet
+        //从网络或者缓存中加载图片
         id <SDWebImageOperation> operation = [manager loadImageWithURL:url options:options progress:combinedProgressBlock completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
             //从网络上下载到图片
             __strong __typeof (wself) sself = wself;

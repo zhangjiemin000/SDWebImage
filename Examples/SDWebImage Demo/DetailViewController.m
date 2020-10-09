@@ -45,8 +45,10 @@
 {
     self.activityIndicator.hidden = NO;
     [self.activityIndicator startAnimating];
-    
+
     __weak typeof(self) weakSelf = self;
+    NSString *testPicturePath = [[[NSBundle mainBundle].resourcePath stringByAppendingPathComponent:@"CustomPathImages"] stringByAppendingPathComponent:@"test.jpg"];
+    self.imageURL = [NSURL fileURLWithPath:testPicturePath];
     [self.imageView sd_setImageWithURL:self.imageURL
                       placeholderImage:nil
                                options:SDWebImageProgressiveDownload

@@ -125,6 +125,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 }
 /**
  * NSOperation start
+ * 加入到队列中，会自动的开始
  */
 - (void)start {
     @synchronized (self) {
@@ -148,6 +149,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 #endif
         NSURLSession *session = self.unownedSession;
         if (!session) {
+            //如果不存在Session
             NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
             sessionConfig.timeoutIntervalForRequest = 15;
             
@@ -177,7 +179,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
                 self.cachedData = cachedResponse.data;
             }
         }
-        
+        //创建一个DataTask
         self.dataTask = [session dataTaskWithRequest:self.request];
         self.executing = YES;
     }
@@ -193,8 +195,10 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
             }
         }
 #pragma clang diagnostic pop
+        //启动dataTask
         [self.dataTask resume]; // dataTask resume, new DataTask has a suspended state, so resume is also start
         for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
+            //初始化进度
             progressBlock(0, NSURLResponseUnknownLength, self.request.URL);
         }
         __block typeof(self) strongSelf = self;
@@ -219,6 +223,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
     [super cancel];
 
     if (self.dataTask) {
+        //可以针对dataTask 来Cancel
         [self.dataTask cancel];
         __block typeof(self) strongSelf = self;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -352,6 +357,8 @@ didReceiveResponse:(NSURLResponse *)response
             for (id<SDWebImageCoder>coder in [SDWebImageCodersManager sharedInstance].coders) {
                 if ([coder conformsToProtocol:@protocol(SDWebImageProgressiveCoder)] &&
                     [((id<SDWebImageProgressiveCoder>)coder) canIncrementallyDecodeFromData:imageData]) {
+                    //判断是否可以增量编译数据
+                    //新建progress coder
                     self.progressiveCoder = [[[coder class] alloc] init];
                     break;
                 }

@@ -58,6 +58,8 @@
         // At this case, we can sync weak cache back and do not need to load from disk cache
         //使用强指针key，弱指针Value的方式，是为了自动清除二级缓存，（Memory中的），当有内存警告时，这个cache可以随时被清掉，但如果UIView还持有
         //对这个图像的强引用，则可以再次还原这个Image实例而不需要从磁盘中读取
+        //本类本身就是一个Cache类，这个weakCache属于二级缓存，理论上来说，当外部图片塞入到这个NSCache中时，也会存储一个图片的弱引用到这个二级缓存中
+        //这样如果收到内存警告时，NSCache的所有内容会被清除，但是这个二级缓存的弱指针还是引用着图片，图片如果有被界面View强引用，那么就还能找到这个图片，而不需要重新下载
         self.weakCache = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory valueOptions:NSPointerFunctionsWeakMemory capacity:0];
         self.weakCacheLock = dispatch_semaphore_create(1);
         self.config = config;
@@ -77,6 +79,12 @@
 }
 
 // `setObject:forKey:` just call this with 0 cost. Override this is enough
+/**
+ * 设置
+ * @param obj
+ * @param key
+ * @param g
+ */
 - (void)setObject:(id)obj forKey:(id)key cost:(NSUInteger)g {
     [super setObject:obj forKey:key cost:g];
     if (!self.config.shouldUseWeakMemoryCache) {
@@ -105,6 +113,7 @@
         LOCK(self.weakCacheLock);
         obj = [self.weakCache objectForKey:key];
         UNLOCK(self.weakCacheLock);
+        //如果obj存在(因为是弱引用)
         if (obj) {
             // Sync cache
             NSUInteger cost = 0;
@@ -112,12 +121,17 @@
                 cost = [(UIImage *)obj sd_memoryCost];
             }
             // restore NSMemoryCache
+            //重新把obj塞进去
             [super setObject:obj forKey:key cost:cost];
         }
     }
     return obj;
 }
 
+/**
+ * 指定移除Key，就会把Cache和二级缓存都移除
+ * @param key
+ */
 - (void)removeObjectForKey:(id)key {
     [super removeObjectForKey:key];
     if (!self.config.shouldUseWeakMemoryCache) {
@@ -305,6 +319,14 @@
     [self storeImage:image imageData:nil forKey:key toDisk:toDisk completion:completionBlock];
 }
 
+/**
+ * 存储图片
+ * @param image
+ * @param imageData
+ * @param key
+ * @param toDisk
+ * @param completionBlock
+ */
 - (void)storeImage:(nullable UIImage *)image
          imageData:(nullable NSData *)imageData
             forKey:(nullable NSString *)key
@@ -380,6 +402,7 @@
     
     // disable iCloud backup
     if (self.config.shouldDisableiCloud) {
+        //排除iCloud同步
         [fileURL setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
     }
 }

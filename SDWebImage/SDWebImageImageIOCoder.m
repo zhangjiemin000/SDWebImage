@@ -23,7 +23,7 @@ static const size_t kBitsPerComponent = 8;
  * Suggested value for iPad2 and iPhone 4: 120.
  * Suggested value for iPhone 3G and iPod 2 and earlier devices: 30.
  */
-static const CGFloat kDestImageSizeMB = 3.0f; // 60.0f;
+static const CGFloat kDestImageSizeMB =  60.0f;
 
 /*
  * Defines the maximum size in MB of a tile used to decode image when the flag `SDWebImageScaleDownLargeImages` is set
@@ -188,16 +188,16 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     return image;
 #endif
 #if SD_UIKIT || SD_WATCH
-    BOOL shouldScaleDown = YES;
-//    if (optionsDict != nil) {
-//        NSNumber *scaleDownLargeImagesOption = nil;
-//        if ([optionsDict[SDWebImageCoderScaleDownLargeImagesKey] isKindOfClass:[NSNumber class]]) {
-//            scaleDownLargeImagesOption = (NSNumber *)optionsDict[SDWebImageCoderScaleDownLargeImagesKey];
-//        }
-//        if (scaleDownLargeImagesOption != nil) {
-//            shouldScaleDown = [scaleDownLargeImagesOption boolValue];
-//        }
-//    }
+    BOOL shouldScaleDown = NO;
+    if (optionsDict != nil) {
+        NSNumber *scaleDownLargeImagesOption = nil;
+        if ([optionsDict[SDWebImageCoderScaleDownLargeImagesKey] isKindOfClass:[NSNumber class]]) {
+            scaleDownLargeImagesOption = (NSNumber *)optionsDict[SDWebImageCoderScaleDownLargeImagesKey];
+        }
+        if (scaleDownLargeImagesOption != nil) {
+            shouldScaleDown = [scaleDownLargeImagesOption boolValue];
+        }
+    }
     if (!shouldScaleDown) {
         return [self sd_decompressedImageWithImage:image];
     } else {

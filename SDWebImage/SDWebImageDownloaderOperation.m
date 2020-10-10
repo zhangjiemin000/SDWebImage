@@ -405,6 +405,7 @@ didReceiveResponse:(NSURLResponse *)response
         // Prevents caching of responses
         cachedResponse = nil;
     }
+    //如果需要存储网络Cache，则需要传入代理的CompletionHandler的方法
     if (completionHandler) {
         completionHandler(cachedResponse);
     }
